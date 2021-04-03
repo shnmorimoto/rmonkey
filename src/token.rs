@@ -1,21 +1,40 @@
-use std::{collections::HashMap, fmt};
+use std::{collections::HashMap, fmt, sync::Mutex};
+
+use once_cell::sync::Lazy;
 
 pub struct Token {
     pub literal: String,
     pub type_kind: TokenType,
 }
 
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Type: {}, Literal: {}", self.type_kind, self.literal)
+    }
+}
+
+static KEYWORDS: Lazy<Mutex<HashMap<&str, TokenType>>> = Lazy::new(|| {
+    let mut keywords = HashMap::new();
+    keywords.insert("fn", TokenType::Function);
+    keywords.insert("let", TokenType::Let);
+    keywords.insert("true", TokenType::True);
+    keywords.insert("false", TokenType::False);
+    keywords.insert("if", TokenType::If);
+    keywords.insert("else", TokenType::Else);
+    keywords.insert("return", TokenType::Return);
+    Mutex::new(keywords)
+});
+
 impl Token {
-    pub fn new(type_kind: TokenType, literal: String) -> Self {
-        Token { literal, type_kind }
+    pub fn new(type_kind: TokenType, literal: impl Into<String>) -> Self {
+        Token {
+            literal: literal.into(),
+            type_kind: type_kind,
+        }
     }
 
     pub fn lookup_ident(ident: &str) -> TokenType {
-        let mut keywords = HashMap::new();
-        keywords.insert("fn", TokenType::Function);
-        keywords.insert("let", TokenType::Let);
-
-        match keywords.get(&ident) {
+        match KEYWORDS.lock().unwrap().get(&ident) {
             Some(key) => {
                 return *key;
             }
@@ -38,6 +57,16 @@ pub enum TokenType {
     // Operator
     Assign,
     Plus,
+    Minus,
+    Bang,
+    Asterisk,
+    Slash,
+
+    Lt,
+    Gt,
+
+    Eq,
+    NotEq,
 
     // Delimiter
     Comma,
@@ -51,6 +80,11 @@ pub enum TokenType {
     // Keyword
     Function,
     Let,
+    True,
+    False,
+    If,
+    Else,
+    Return,
 }
 
 impl fmt::Display for TokenType {
@@ -71,6 +105,19 @@ impl fmt::Display for TokenType {
             Rbrace => write!(f, "}}"),
             Function => write!(f, "FUNCTION"),
             Let => write!(f, "FUNCTION"),
+            Minus => write!(f, "-"),
+            Bang => write!(f, "!"),
+            Asterisk => write!(f, "*"),
+            Slash => write!(f, "/"),
+            Lt => write!(f, "<"),
+            Gt => write!(f, ">"),
+            True => write!(f, "TRUE"),
+            False => write!(f, "FALSE"),
+            If => write!(f, "IF"),
+            Else => write!(f, "ELSE"),
+            Return => write!(f, "RETURN"),
+            Eq => write!(f, "EQ"),
+            NotEq => write!(f, "NOT_EQ"),
         }
     }
 }
