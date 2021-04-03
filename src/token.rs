@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 pub struct Token {
     pub literal: String,
@@ -8,6 +8,21 @@ pub struct Token {
 impl Token {
     pub fn new(type_kind: TokenType, literal: String) -> Self {
         Token { literal, type_kind }
+    }
+
+    pub fn lookup_ident(ident: &str) -> TokenType {
+        let mut keywords = HashMap::new();
+        keywords.insert("fn", TokenType::Function);
+        keywords.insert("let", TokenType::Let);
+
+        match keywords.get(&ident) {
+            Some(key) => {
+                return *key;
+            }
+            None => {
+                return TokenType::Ident;
+            }
+        }
     }
 }
 
