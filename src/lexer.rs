@@ -8,9 +8,9 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    pub fn new(input: String) -> Self {
+    pub fn new(input: impl Into<String>) -> Self {
         let mut lexer = Lexer {
-            input,
+            input: input.into(),
             postion: 0,
             read_position: 0,
             ch: '\0',
@@ -147,8 +147,6 @@ impl Lexer {
 
 #[cfg(test)]
 mod tests {
-    use std::convert::TryFrom;
-
     use super::*;
 
     #[test]
@@ -249,7 +247,7 @@ if (5 < 10) {
             Token::new(TokenType::Semicolon, ";"),
         ];
 
-        let mut lexer = Lexer::new(input.to_string());
+        let mut lexer = Lexer::new(input);
 
         for (i, tt) in tests.iter().enumerate() {
             let tok = lexer.next_token();

@@ -105,7 +105,7 @@ impl fmt::Display for TokenType {
             Lbrace => write!(f, "{{"),
             Rbrace => write!(f, "}}"),
             Function => write!(f, "FUNCTION"),
-            Let => write!(f, "FUNCTION"),
+            Let => write!(f, "LET"),
             Minus => write!(f, "-"),
             Bang => write!(f, "!"),
             Asterisk => write!(f, "*"),

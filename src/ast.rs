@@ -1,58 +1,60 @@
-use crate::token::Token;
+use std::fmt;
 
-trait Node {
-    fn token_literal(&self) -> String;
+pub enum Statement {
+    Let {
+        identifier: Ident,
+        expression: Expression,
+    },
+    Return {
+        return_value: Expression,
+    },
 }
 
-trait Statement: Node {
-    fn statement_node(&self);
-}
-
-trait Expression: Node {
-    fn expression_node(&self);
-}
-
-struct Program {
-    statements: Vec<Box<dyn Statement>>,
-}
-
-impl Node for Program {
-    fn token_literal(&self) -> String {
-        if self.statements.len() > 0 {
-            return (*self.statements[0]).token_literal();
-        } else {
-            return "".to_string();
+impl fmt::Display for Statement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Statement::Let {
+                identifier,
+                expression,
+            } => write!(f, "Let({}, {})", identifier, expression),
+            Statement::Return { return_value } => write!(f, "Return({})", return_value),
         }
     }
 }
 
-struct LetStatement {
-    token: Token,
-    name: Identifier,
-    value: Box<dyn Expression>,
+pub enum Expression {
+    Identifier(Ident),
 }
 
-impl Node for LetStatement {
-    fn token_literal(&self) -> String {
-        self.token.literal.clone()
+impl fmt::Display for Expression {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Expression::Identifier(i) => write!(f, "Identifier({})", i),
+        }
     }
 }
 
-impl Statement for LetStatement {
-    fn statement_node(&self) {}
-}
+#[derive(Debug, Clone)]
+pub struct Ident(pub String);
 
-struct Identifier {
-    token: Token,
-    value: String,
-}
-
-impl Node for Identifier {
-    fn token_literal(&self) -> String {
-        self.token.literal.clone()
+impl Ident {
+    pub fn new(s: impl Into<String>) -> Self {
+        Ident(s.into())
     }
 }
 
-impl Expression for Identifier {
-    fn expression_node(&self) {}
+impl fmt::Display for Ident {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+pub struct Program {
+    pub statements: Vec<Statement>,
+}
+
+impl Program {
+    pub fn new(statements: Vec<Statement>) -> Self {
+        Program { statements }
+    }
 }
