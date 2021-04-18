@@ -3,6 +3,17 @@ use crate::lexer::*;
 use crate::token::*;
 use itertools::Itertools;
 
+#[derive(PartialEq, PartialOrd, Debug, Clone)]
+enum Precedence {
+    LOWEST,
+    EQUALS,
+    LESSGRATER,
+    SUM,
+    PRDOCUT,
+    PREFIX,
+    CALL,
+}
+
 struct Parser {
     lexer: Lexer,
     cur_token: Token,
@@ -46,7 +57,7 @@ impl Parser {
                 return self.parse_return_statement();
             }
             _ => {
-                return None;
+                return self.parse_expression_statement();
             }
         }
     }
@@ -81,6 +92,30 @@ impl Parser {
         Some(Statement::Return {
             return_value: Expression::Identifier(ident.clone()),
         })
+    }
+
+    fn parse_expression_statement(&mut self) -> Option<Statement> {
+        let expression = self.parse_expression(Precedence::LOWEST);
+
+        if self.peek_token_is(TokenType::Semicolon) {
+            self.next_token();
+        }
+
+        match expression {
+            Some(expression) => Some(Statement::Expression { expression }),
+            None => None,
+        }
+    }
+
+    fn parse_expression(&self, p: Precedence) -> Option<Expression> {
+        match self.cur_token.type_kind {
+            TokenType::Ident => Some(self.parse_identifier()),
+            _ => None,
+        }
+    }
+
+    fn parse_identifier(&self) -> Expression {
+        Expression::Identifier(Ident::new(self.cur_token.literal.clone()))
     }
 
     fn cur_token_is(&self, t: TokenType) -> bool {
@@ -120,6 +155,42 @@ impl Parser {
 mod test {
     use super::*;
 
+    #[test]
+    fn test_identifier_expression() {
+        let input = "foobar;";
+
+        let lexer = Lexer::new(input);
+        let mut parser = Parser::new(lexer);
+        let program = parser.parser_program();
+        check_parser_errors(&parser);
+
+        assert_eq!(
+            1,
+            program.statements.len(),
+            "program has not enough statements. got={}",
+            program.statements.len()
+        );
+
+        match program.statements.get(0).unwrap() {
+            Statement::Expression { expression } => match expression {
+                Expression::Identifier(ident) => {
+                    assert_eq!(
+                        "foobar",
+                        &ident.to_string(),
+                        "ident value not {}, got={}",
+                        "foobar",
+                        &ident.to_string()
+                    );
+                }
+                _ => assert!(false, "exp not identifier got={}", expression),
+            },
+            _ => assert!(
+                false,
+                "exp not identifier got={}",
+                program.statements.get(0).unwrap()
+            ),
+        }
+    }
     #[test]
     fn test_return_statements() {
         let input = "
