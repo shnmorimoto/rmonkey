@@ -14,6 +14,22 @@ enum Precedence {
     CALL,
 }
 
+impl Precedence {
+    fn get_precedence(token: TokenType) -> Self {
+        match token {
+            TokenType::Eq => Precedence::EQUALS,
+            TokenType::NotEq => Precedence::EQUALS,
+            TokenType::Lt => Precedence::LESSGRATER,
+            TokenType::Gt => Precedence::LESSGRATER,
+            TokenType::Plus => Precedence::SUM,
+            TokenType::Minus => Precedence::SUM,
+            TokenType::Slash => Precedence::PRDOCUT,
+            TokenType::Asterisk => Precedence::PRDOCUT,
+            _ => Precedence::LOWEST,
+        }
+    }
+}
+
 struct Parser {
     lexer: Lexer,
     cur_token: Token,
@@ -33,6 +49,14 @@ impl Parser {
             errors,
         };
         parser
+    }
+
+    fn peek_precedence(&self) -> Precedence {
+        Precedence::get_precedence(self.peek_token.type_kind)
+    }
+
+    fn cur_precedence(&self) -> Precedence {
+        Precedence::get_precedence(self.cur_token.type_kind)
     }
 
     fn peek_error(&mut self, t: TokenType) {
@@ -107,15 +131,83 @@ impl Parser {
         }
     }
 
-    fn parse_expression(&self, p: Precedence) -> Option<Expression> {
-        match self.cur_token.type_kind {
+    fn parse_expression(&mut self, precdence: Precedence) -> Option<Expression> {
+        let left_expression_opt = match self.cur_token.type_kind {
             TokenType::Ident => Some(self.parse_identifier()),
-            _ => None,
+            TokenType::Int => Some(self.parse_integer_literal()),
+            TokenType::Bang | TokenType::Minus => Some(self.parse_prefix_expression()),
+            _ => {
+                self.no_prefix_parse_error();
+                None
+            }
+        };
+
+        if left_expression_opt.is_none() {
+            return None;
+        }
+
+        let mut left = left_expression_opt.unwrap();
+        while (!self.peek_token_is(TokenType::Semicolon)) && (precdence < self.peek_precedence()) {
+            let left_option = match self.peek_token.type_kind {
+                TokenType::Plus
+                | TokenType::Minus
+                | TokenType::Slash
+                | TokenType::Asterisk
+                | TokenType::Eq
+                | TokenType::NotEq
+                | TokenType::Lt
+                | TokenType::Gt => {
+                    self.next_token();
+                    Some(self.parse_infix_expression(&left))
+                }
+                _ => None,
+            };
+
+            if left_option.is_none() {
+                return Some(left);
+            }
+
+            left = left_option.unwrap();
+        }
+
+        Some(left)
+    }
+
+    fn parse_infix_expression(&mut self, left: &Expression) -> Expression {
+        let operator = self.cur_token.literal.clone();
+        let precedence = self.cur_precedence();
+        self.next_token();
+        let right = self.parse_expression(precedence).unwrap();
+        Expression::InfixExpression {
+            left: Box::new(left.clone()),
+            operator,
+            right: Box::new(right),
+        }
+    }
+
+    fn no_prefix_parse_error(&mut self) {
+        let s = format!(
+            "no prefix parse function for {} found",
+            self.cur_token.literal
+        );
+        self.errors.push(s);
+    }
+
+    fn parse_prefix_expression(&mut self) -> Expression {
+        let cur_token_literal = self.cur_token.literal.clone();
+        self.next_token();
+        Expression::PrefixExpression {
+            operator: cur_token_literal,
+            right: Box::new(self.parse_expression(Precedence::PREFIX).unwrap()),
         }
     }
 
     fn parse_identifier(&self) -> Expression {
         Expression::Identifier(Ident::new(self.cur_token.literal.clone()))
+    }
+
+    fn parse_integer_literal(&self) -> Expression {
+        Expression::IntegerLiteral(self.cur_token.literal.parse::<i64>().unwrap())
     }
 
     fn cur_token_is(&self, t: TokenType) -> bool {
@@ -156,6 +248,127 @@ mod test {
     use super::*;
 
     #[test]
+    fn test_parsing_infix_expressions() {
+        let infix_tests = vec![
+            ("5 + 5;", 5, "+", 5),
+            ("5 - 5;", 5, "-", 5),
+            ("5 * 5;", 5, "*", 5),
+            ("5 / 5;", 5, "/", 5),
+            ("5 > 5;", 5, ">", 5),
+            ("5 < 5;", 5, "<", 5),
+            ("5 == 5;", 5, "==", 5),
+            ("5 != 5;", 5, "!=", 5),
+        ];
+
+        for tt in infix_tests.iter() {
+            let lexer = Lexer::new(tt.0);
+            let mut parser = Parser::new(lexer);
+            let program = parser.parser_program();
+            check_parser_errors(&parser);
+            assert_eq!(
+                1,
+                program.statements.len(),
+                "program has not enough statements. got={}",
+                program.statements.len()
+            );
+
+            match program.statements.get(0).unwrap() {
+                Statement::Expression { expression } => match expression {
+                    Expression::InfixExpression {
+                        left,
+                        operator,
+                        right,
+                    } => {
+                        assert_eq!(tt.2, operator);
+                        test_integral_literal(tt.1, left);
+                        test_integral_literal(tt.3, right);
+                    }
+                    _ => assert!(false, "exp operator not infix got={}", expression),
+                },
+                _ => assert!(
+                    false,
+                    "statement[0] not exp got={}",
+                    program.statements.get(0).unwrap()
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn test_parsing_prefix_expression() {
+        let prefix_tests = vec![("!5;", "!", 5), ("-15;", "-", 15)];
+        for tt in prefix_tests.iter() {
+            let lexer = Lexer::new(tt.0);
+            let mut parser = Parser::new(lexer);
+            let program = parser.parser_program();
+            check_parser_errors(&parser);
+
+            assert_eq!(
+                1,
+                program.statements.len(),
+                "program has not enough statements. got={}",
+                program.statements.len()
+            );
+
+            match program.statements.get(0).unwrap() {
+                Statement::Expression { expression } => match expression {
+                    Expression::PrefixExpression { operator, right } => {
+                        assert_eq!(tt.1, operator);
+                        test_integral_literal(tt.2, right);
+                    }
+                    _ => assert!(false, "exp operator not prefix got={}", expression),
+                },
+                _ => assert!(
+                    false,
+                    "statement[0] not exp got={}",
+                    program.statements.get(0).unwrap()
+                ),
+            }
+        }
+    }
+
+    fn test_integral_literal(value: i64, expression: &Expression) {
+        match *expression {
+            Expression::IntegerLiteral(i) => {
+                assert_eq!(value, i, "integral value not {}, got={}", value, i);
+            }
+            _ => {
+                assert!(false, "il note integral literal, got={}", expression);
+            }
+        }
+    }
+
+    #[test]
+    fn test_integer_literal() {
+        let input = "5;";
+        let lexer = Lexer::new(input);
+        let mut parser = Parser::new(lexer);
+        let program = parser.parser_program();
+        check_parser_errors(&parser);
+
+        assert_eq!(
+            1,
+            program.statements.len(),
+            "program has not enough statements. got={}",
+            program.statements.len()
+        );
+
+        match program.statements.get(0).unwrap() {
+            Statement::Expression { expression } => match expression {
+                Expression::IntegerLiteral(i) => {
+                    assert_eq!(5, *i, "literal value not {}, got={}", 5, i);
+                }
+                _ => assert!(false, "exp not integer got={}", expression),
+            },
+            _ => assert!(
+                false,
+                "statement[0] not exp got={}",
+                program.statements.get(0).unwrap()
+            ),
+        }
+    }
+
+    #[test]
     fn test_identifier_expression() {
         let input = "foobar;";
 
@@ -186,7 +399,7 @@ mod test {
             },
             _ => assert!(
                 false,
-                "exp not identifier got={}",
+                "statement[0] not exp got={}",
                 program.statements.get(0).unwrap()
             ),
         }

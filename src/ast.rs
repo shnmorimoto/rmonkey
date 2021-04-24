@@ -51,14 +51,36 @@ impl Statement {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Expression {
     Identifier(Ident),
+    IntegerLiteral(i64),
+    PrefixExpression {
+        operator: String,
+        right: Box<Expression>,
+    },
+    InfixExpression {
+        left: Box<Expression>,
+        operator: String,
+        right: Box<Expression>,
+    },
 }
 
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Expression::Identifier(i) => write!(f, "Identifier({})", i),
+            Expression::IntegerLiteral(i) => write!(f, "IntegralLiteral({})", i),
+            Expression::PrefixExpression { operator, right } => {
+                write!(f, "PrefixExpression({}, {})", operator, right)
+            }
+            Expression::InfixExpression {
+                left,
+                operator,
+                right,
+            } => {
+                write!(f, "InfixExpression({}, {}, {})", left, operator, right)
+            }
         }
     }
 }
@@ -67,11 +89,22 @@ impl Expression {
     fn to_string(&self) -> String {
         match self {
             Expression::Identifier(ident) => format!("{}", &ident.to_string()),
+            Expression::IntegerLiteral(i) => format!("{}", i),
+            Expression::PrefixExpression { operator, right } => {
+                format!("{}{}", operator, right.to_string())
+            }
+            Expression::InfixExpression {
+                left,
+                operator,
+                right,
+            } => {
+                format!("{} {} {}", left.to_string(), operator, right.to_string())
+            }
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Ident(pub String);
 
 impl Ident {
