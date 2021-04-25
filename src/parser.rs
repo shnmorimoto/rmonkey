@@ -248,6 +248,37 @@ mod test {
     use super::*;
 
     #[test]
+    fn test_operator_precedence_parsing() {
+        let tests = vec![
+            ("-a * b", "((-a) * b)"),
+            ("!-a", "(!(-a))"),
+            ("a + b + c", "((a + b) + c)"),
+            ("a + b - c", "((a + b) - c)"),
+            ("a * b * c", "((a * b) * c)"),
+            ("a * b / c", "((a * b) / c)"),
+            ("a + b / c", "(a + (b / c))"),
+            ("a + b * c + d / e - f", "(((a + (b * c)) + (d / e)) - f)"),
+            ("3 + 4; -5 * 5", "(3 + 4)((-5) * 5)"),
+            ("5 > 4 == 3 < 4", "((5 > 4) == (3 < 4))"),
+            ("5 < 4 != 3 > 4", "((5 < 4) != (3 > 4))"),
+            (
+                "3 + 4 * 5 == 3 * 1 + 4 * 5",
+                "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
+            ),
+        ];
+
+        for tt in tests.iter() {
+            let lexer = Lexer::new(tt.0);
+            let mut parser = Parser::new(lexer);
+            let program = parser.parser_program();
+            check_parser_errors(&parser);
+
+            let actual = program.to_string();
+            assert_eq!(actual, tt.1, "expected={}, got={}", tt.1, actual);
+        }
+    }
+
+    #[test]
     fn test_parsing_infix_expressions() {
         let infix_tests = vec![
             ("5 + 5;", 5, "+", 5),
