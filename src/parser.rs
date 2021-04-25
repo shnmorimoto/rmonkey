@@ -137,6 +137,7 @@ impl Parser {
             TokenType::Int => Some(self.parse_integer_literal()),
             TokenType::True | TokenType::False => Some(self.parse_boolean()),
             TokenType::Bang | TokenType::Minus => Some(self.parse_prefix_expression()),
+            TokenType::Lparen => self.parse_grouped_expression(),
             _ => {
                 self.no_prefix_parse_error();
                 None
@@ -172,6 +173,15 @@ impl Parser {
         }
 
         Some(left)
+    }
+
+    fn parse_grouped_expression(&mut self) -> Option<Expression> {
+        self.next_token();
+        let exp = self.parse_expression(Precedence::LOWEST);
+        if !self.expect_peek(TokenType::Rparen) {
+            return None;
+        }
+        exp
     }
 
     fn parse_boolean(&self) -> Expression {
@@ -312,6 +322,11 @@ mod test {
                 "3 + 4 * 5 == 3 * 1 + 4 * 5",
                 "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
             ),
+            ("1 + (2 + 3) + 4", "((1 + (2 + 3)) + 4)"),
+            ("(5 + 5) * 2", "((5 + 5) * 2)"),
+            ("2 / (5 + 5)", "(2 / (5 + 5))"),
+            ("-(5 + 5)", "(-(5 + 5))"),
+            ("!(true == true)", "(!(true == true))"),
         ];
 
         for tt in tests.iter() {
