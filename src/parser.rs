@@ -135,6 +135,7 @@ impl Parser {
         let left_expression_opt = match self.cur_token.type_kind {
             TokenType::Ident => Some(self.parse_identifier()),
             TokenType::Int => Some(self.parse_integer_literal()),
+            TokenType::True | TokenType::False => Some(self.parse_boolean()),
             TokenType::Bang | TokenType::Minus => Some(self.parse_prefix_expression()),
             _ => {
                 self.no_prefix_parse_error();
@@ -171,6 +172,10 @@ impl Parser {
         }
 
         Some(left)
+    }
+
+    fn parse_boolean(&self) -> Expression {
+        Expression::Boolean(self.cur_token.literal.parse::<bool>().unwrap())
     }
 
     fn parse_infix_expression(&mut self, left: &Expression) -> Expression {
@@ -246,10 +251,52 @@ impl Parser {
 #[cfg(test)]
 mod test {
     use super::*;
+    #[derive(Debug, PartialEq, Eq, Hash, Clone)]
+    enum TestValue {
+        Int(i64),
+        Str(String),
+        Bool(bool),
+    }
+
+    #[test]
+    fn test_boolean_expression() {
+        let tests = vec![("true", true), ("false", false)];
+        for tt in tests.iter() {
+            let lexer = Lexer::new(tt.0);
+            let mut parser = Parser::new(lexer);
+            let program = parser.parser_program();
+            check_parser_errors(&parser);
+
+            assert_eq!(
+                1,
+                program.statements.len(),
+                "program has not enough statements. got={}",
+                program.statements.len()
+            );
+
+            match program.statements.get(0).unwrap() {
+                Statement::Expression { expression } => match expression {
+                    Expression::Boolean(b) => {
+                        assert_eq!(tt.1, *b, "boolean value not {}, got={}", tt.1, b);
+                    }
+                    _ => assert!(false, "exp not bool got={}", expression),
+                },
+                _ => assert!(
+                    false,
+                    "statement[0] not exp got={}",
+                    program.statements.get(0).unwrap()
+                ),
+            }
+        }
+    }
 
     #[test]
     fn test_operator_precedence_parsing() {
         let tests = vec![
+            ("true", "true"),
+            ("false", "false"),
+            ("3 > 5 == false", "((3 > 5) == false)"),
+            ("3 < 5 == true", "((3 < 5) == true)"),
             ("-a * b", "((-a) * b)"),
             ("!-a", "(!(-a))"),
             ("a + b + c", "((a + b) + c)"),
@@ -281,14 +328,32 @@ mod test {
     #[test]
     fn test_parsing_infix_expressions() {
         let infix_tests = vec![
-            ("5 + 5;", 5, "+", 5),
-            ("5 - 5;", 5, "-", 5),
-            ("5 * 5;", 5, "*", 5),
-            ("5 / 5;", 5, "/", 5),
-            ("5 > 5;", 5, ">", 5),
-            ("5 < 5;", 5, "<", 5),
-            ("5 == 5;", 5, "==", 5),
-            ("5 != 5;", 5, "!=", 5),
+            ("5 + 5;", TestValue::Int(5), "+", TestValue::Int(5)),
+            ("5 - 5;", TestValue::Int(5), "-", TestValue::Int(5)),
+            ("5 * 5;", TestValue::Int(5), "*", TestValue::Int(5)),
+            ("5 / 5;", TestValue::Int(5), "/", TestValue::Int(5)),
+            ("5 > 5;", TestValue::Int(5), ">", TestValue::Int(5)),
+            ("5 < 5;", TestValue::Int(5), "<", TestValue::Int(5)),
+            ("5 == 5;", TestValue::Int(5), "==", TestValue::Int(5)),
+            ("5 != 5;", TestValue::Int(5), "!=", TestValue::Int(5)),
+            (
+                "true == true",
+                TestValue::Bool(true),
+                "==",
+                TestValue::Bool(true),
+            ),
+            (
+                "true != false",
+                TestValue::Bool(true),
+                "!=",
+                TestValue::Bool(false),
+            ),
+            (
+                "false == false",
+                TestValue::Bool(false),
+                "==",
+                TestValue::Bool(false),
+            ),
         ];
 
         for tt in infix_tests.iter() {
@@ -304,18 +369,9 @@ mod test {
             );
 
             match program.statements.get(0).unwrap() {
-                Statement::Expression { expression } => match expression {
-                    Expression::InfixExpression {
-                        left,
-                        operator,
-                        right,
-                    } => {
-                        assert_eq!(tt.2, operator);
-                        test_integral_literal(tt.1, left);
-                        test_integral_literal(tt.3, right);
-                    }
-                    _ => assert!(false, "exp operator not infix got={}", expression),
-                },
+                Statement::Expression { expression } => {
+                    test_infix_expression(tt.1.clone(), tt.2.to_string(), tt.3.clone(), expression)
+                }
                 _ => assert!(
                     false,
                     "statement[0] not exp got={}",
@@ -327,7 +383,12 @@ mod test {
 
     #[test]
     fn test_parsing_prefix_expression() {
-        let prefix_tests = vec![("!5;", "!", 5), ("-15;", "-", 15)];
+        let prefix_tests = vec![
+            ("!5;", "!", TestValue::Int(5)),
+            ("-15;", "-", TestValue::Int(15)),
+            ("!true;", "!", TestValue::Bool(true)),
+            ("!false;", "!", TestValue::Bool(false)),
+        ];
         for tt in prefix_tests.iter() {
             let lexer = Lexer::new(tt.0);
             let mut parser = Parser::new(lexer);
@@ -345,7 +406,7 @@ mod test {
                 Statement::Expression { expression } => match expression {
                     Expression::PrefixExpression { operator, right } => {
                         assert_eq!(tt.1, operator);
-                        test_integral_literal(tt.2, right);
+                        test_literal_expression(tt.2.clone(), right);
                     }
                     _ => assert!(false, "exp operator not prefix got={}", expression),
                 },
@@ -359,13 +420,67 @@ mod test {
     }
 
     fn test_integral_literal(value: i64, expression: &Expression) {
-        match *expression {
+        match expression {
             Expression::IntegerLiteral(i) => {
-                assert_eq!(value, i, "integral value not {}, got={}", value, i);
+                assert_eq!(value, *i, "integral value not {}, got={}", value, i);
             }
             _ => {
-                assert!(false, "il note integral literal, got={}", expression);
+                assert!(false, "exp not integral literal, got={}", expression);
             }
+        }
+    }
+
+    fn test_identifier_literal(value: String, expression: &Expression) {
+        match expression {
+            Expression::Identifier(ident) => {
+                assert_eq!(value, ident.0, "ident value not {}, got={}", value, ident.0);
+            }
+            _ => {
+                assert!(false, "exp not ident, got={}", expression);
+            }
+        }
+    }
+
+    fn test_boolean_literal(value: bool, expression: &Expression) {
+        match expression {
+            Expression::Boolean(b) => {
+                assert_eq!(value, *b, "bool value not {}, got={}", value, b);
+            }
+            _ => {
+                assert!(false, "exp not bool, got={}", expression);
+            }
+        }
+    }
+
+    fn test_literal_expression(expected: TestValue, expression: &Expression) {
+        match expected {
+            TestValue::Int(i) => test_integral_literal(i, expression),
+            TestValue::Str(s) => test_identifier_literal(s, expression),
+            TestValue::Bool(b) => test_boolean_literal(b, expression),
+        }
+    }
+
+    fn test_infix_expression(
+        left_value: TestValue,
+        operator_value: String,
+        right_value: TestValue,
+        expression: &Expression,
+    ) {
+        match expression {
+            Expression::InfixExpression {
+                left,
+                operator,
+                right,
+            } => {
+                test_literal_expression(left_value, &left);
+                assert_eq!(
+                    &operator_value, operator,
+                    "operator is not {}, got={}",
+                    operator_value, operator
+                );
+                test_literal_expression(right_value, &right);
+            }
+            _ => assert!(false, "exp operator not infix got={}", expression),
         }
     }
 
